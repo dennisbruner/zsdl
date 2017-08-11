@@ -26,7 +26,6 @@ SOFTWARE.
 
 import sys
 import re
-import threading
 import math
 import requests
 from getopt import getopt
