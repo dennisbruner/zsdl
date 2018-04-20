@@ -3,7 +3,7 @@
 '''
 MIT License
 
-Copyright (c) 2017 Dennis Bruner
+Copyright (c) 2018 Dennis Bruner
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,35 +28,22 @@ import sys
 import re
 import math
 import requests
-from getopt import getopt
+import argparse
 from urllib.parse import unquote
 from os.path import join
 
-USAGE = '''
-zippyshare.com downloader written in python
-Source: https://github.com/dennisbruner/zsdl
-
-Usage:
-  %s <links>...
-  %s -h | --help
-
-Options:
-  -h --help           Show this screen.
-  -d --dir=<target>   Target directory where to save files [default: .].
-'''.strip() % (sys.argv[0], sys.argv[0])
-
-LINK_PATTERN = re.compile(r'http:\/\/www([\d]*)\.zippyshare\.com\/v\/([\w\d]*)\/file\.html')
+LINK_PATTERN = re.compile(r'https?:\/\/www([\d]*)\.zippyshare\.com\/v\/([\w\d]*)\/file\.html')
 INFO_PATTERN = re.compile(r'document\.getElementById\(\'dlbutton\'\)\.href = \"\/d\/([\w\d]*)\/\" \+ \(([\d]*) % ([\d]*) \+ ([\d]*) % ([\d]*)\) \+ \"\/(.*)\";')
 
 # Source: https://stackoverflow.com/a/14822210
 def convert_size(size_bytes):
     if size_bytes == 0:
         return '0 B'
-    size_name = ('B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB')
+    size_name = ('B', 'KiB', 'MiB', 'GiB', 'TiB')
     i = int(math.floor(math.log(size_bytes, 1024)))
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
-    return "%s %s" % (s, size_name[i])
+    return '%s %s' % (s, size_name[i])
 
 # Custom errors
 class InvalidLinkException(Exception):
@@ -71,27 +58,27 @@ class RemoteFile:
         self.url = url
         self.size = size
         self.name = name
-    
+
     def open(self):
         r = requests.get(self.url, stream=True, timeout=10)
         return r
 
 def get_file(link):
     # Match link (get subdomain)
-    linkMatch = LINK_PATTERN.match(link)
-    if not linkMatch:
+    link_match = LINK_PATTERN.match(link)
+    if not link_match:
         raise InvalidLinkException('Invalid link')
-    subdomain = 'www' + linkMatch.group(1)
+    subdomain = 'www' + link_match.group(1)
 
     # Match info (containing hash variables and filename)
-    html = requests.get(linkMatch.group(0), timeout=10)
+    html = requests.get(link_match.group(0), timeout=10)
     info = INFO_PATTERN.findall(html.text)
     if len(info) == 0:
         raise UnavailableFileException('File is unavailable')
     info = info[0]
 
     # ID
-    linkID = info[0]
+    link_id = info[0]
 
     # Hash
     h1 = int(info[1])
@@ -104,7 +91,7 @@ def get_file(link):
     name = unquote(info[5])
 
     # Construct url
-    url = 'http://' + subdomain + '.zippyshare.com/d/' + linkID + '/' + h + '/' + info[5]
+    url = 'https://' + subdomain + '.zippyshare.com/d/' + link_id + '/' + h + '/' + info[5]
 
     # Do HEAD request to get content-length header
     head = requests.head(url, timeout=10)
@@ -112,29 +99,23 @@ def get_file(link):
 
     return RemoteFile(url, size, name)
 
-def main(argv):
-    opts, rem = getopt(argv, 'h:d:', ['help', 'dir='])
+def main():
+    parser = argparse.ArgumentParser(description='Download files from zippyshare.com')
+    parser.add_argument('-d', '--dir', default='./', help='Target download directory')
+    parser.add_argument('links', nargs='+', help='zippyshare.com URL')
+    args = parser.parse_args()
 
-    # Options
-    download_dir = '.'
-    for opt, arg in opts:
-        if opt in ('-h', '--help'):
-            print(USAGE)
-            sys.exit()
-        elif opt in ('-d', '--dir'):
-            download_dir = arg
-
-    # Links
+    # Match links
     links = []
-    for link in rem:
+    for link in args.links:
         m = LINK_PATTERN.match(link)
         if not m:
             continue
         links.append(link)
     if len(links) == 0:
-        print(USAGE)
-        sys.exit()
-    
+        print('No links found!')
+        sys.exit(1)
+
     # Get files
     print('Fetching information...')
     files = []
@@ -148,12 +129,12 @@ def main(argv):
             print("File unavailable: %s" % link)
         except Exception as e:
             print(e)
-            sys.exit()
-    
+            sys.exit(1)
+
     # Download files
     for file in files:
         print('Downloading "%s" (%s)...' % (file.name, convert_size(file.size)))
-        target_file = join(download_dir, file.name)
+        target_file = join(args.dir, file.name)
         with open(target_file, 'wb') as f:
             # Copy bytes
             r = file.open()
@@ -164,8 +145,8 @@ def main(argv):
             r.close()
             f.flush()
             f.close()
-    
+
     print('Download done!')
 
-if __name__ == "__main__":
-    main(sys.argv[1:])
+if __name__ == '__main__':
+    main()
