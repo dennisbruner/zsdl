@@ -1,3 +1,5 @@
+# *!!! NO LONGER WORKS !!!*
+
 # zsdl
 
 [zippyshare.com](http://zippyshare.com) downloader written in python
